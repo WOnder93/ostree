@@ -2830,6 +2830,69 @@ get_var_dfd (OstreeSysroot      *self,
   return glnx_opendirat (base_dfd, base_path, TRUE, ret_fd, error);
 }
 
+static void
+child_setup_fchdir(gpointer data)
+{
+  int fd = (int)(uintptr_t)data;
+  int rc __attribute__((unused));
+
+  rc = fchdir(fd);
+}
+
+/*
+ * Derived from rpm-ostree's rust/src/bwrap.rs
+ */
+static gboolean
+run_in_deployment (int deployment_dfd,
+                   const gchar * const *child_argv,
+                   gsize child_argc,
+                   gint *exit_status,
+                   GError **error)
+{
+  static const gchar * const COMMON_ARGV[] = {
+    "/usr/bin/bwrap",
+    "--dev", "/dev", "--proc", "/proc", "--dir", "/run", "--dir", "/tmp",
+    "--chdir", "/",
+    "--die-with-parent",
+    "--unshare-pid",
+    "--unshare-uts",
+    "--unshare-ipc",
+    "--unshare-cgroup-try",
+    "--ro-bind", "/sys/block",    "/sys/block",
+    "--ro-bind", "/sys/bus",      "/sys/bus",
+    "--ro-bind", "/sys/class",    "/sys/class",
+    "--ro-bind", "/sys/dev",      "/sys/dev",
+    "--ro-bind", "/sys/devices",  "/sys/devices",
+    "--bind", "usr", "/usr",
+    "--bind", "etc", "/etc",
+    "--bind", "var", "/var",
+    "--symlink", "/usr/lib",      "/lib",
+    "--symlink", "/usr/lib32",    "/lib32",
+    "--symlink", "/usr/lib64",    "/lib64",
+    "--symlink", "/usr/bin",      "/bin",
+    "--symlink", "/usr/sbin",     "/sbin",
+  };
+  static const gsize COMMON_ARGC = sizeof(COMMON_ARGV) / sizeof(*COMMON_ARGV);
+
+  gsize i;
+  GPtrArray *args = g_ptr_array_sized_new(COMMON_ARGC + child_argc + 1);
+  g_autofree gchar **args_raw = NULL;
+
+  for (i = 0; i < COMMON_ARGC; i++)
+    g_ptr_array_add(args, (gchar *)COMMON_ARGV[i]);
+
+  for (i = 0; i < child_argc; i++)
+    g_ptr_array_add(args, (gchar *)child_argv[i]);
+
+  g_ptr_array_add(args, NULL);
+
+  args_raw = (gchar **)g_ptr_array_free(args, FALSE);
+
+  return g_spawn_sync(NULL, args_raw, NULL, 0,
+                      &child_setup_fchdir, (gpointer)(uintptr_t)deployment_dfd,
+                      NULL, NULL, exit_status, error);
+}
+
 static gboolean
 sysroot_finalize_deployment (OstreeSysroot     *self,
                              OstreeDeployment  *deployment,
@@ -2865,6 +2928,17 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
                                      cancellable, error))
         return FALSE;
     }
+
+  static const gchar * const SEMODULE_CMD[] = {
+    "semodule", "-N", "--rebuild-if-modules-changed"
+  };
+  gint exit_status;
+  if (!run_in_deployment(deployment_dfd, SEMODULE_CMD,
+                         sizeof(SEMODULE_CMD) / sizeof(*SEMODULE_CMD),
+                         &exit_status, error))
+    return FALSE;
+  if (!g_spawn_check_exit_status(exit_status, NULL))
+    g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
 
   const char *osdeploypath = glnx_strjoina ("ostree/deploy/", ostree_deployment_get_osname (deployment));
   glnx_autofd int os_deploy_dfd = -1;
