@@ -2831,12 +2831,12 @@ get_var_dfd (OstreeSysroot      *self,
 }
 
 static void
-child_setup_fchdir(gpointer data)
+child_setup_fchdir (gpointer data)
 {
-  int fd = (int)(uintptr_t)data;
+  int fd = (int) (uintptr_t) data;
   int rc __attribute__((unused));
 
-  rc = fchdir(fd);
+  rc = fchdir (fd);
 }
 
 /*
@@ -2872,25 +2872,25 @@ run_in_deployment (int deployment_dfd,
     "--symlink", "/usr/bin",      "/bin",
     "--symlink", "/usr/sbin",     "/sbin",
   };
-  static const gsize COMMON_ARGC = sizeof(COMMON_ARGV) / sizeof(*COMMON_ARGV);
+  static const gsize COMMON_ARGC = sizeof (COMMON_ARGV) / sizeof (*COMMON_ARGV);
 
   gsize i;
-  GPtrArray *args = g_ptr_array_sized_new(COMMON_ARGC + child_argc + 1);
+  GPtrArray *args = g_ptr_array_sized_new (COMMON_ARGC + child_argc + 1);
   g_autofree gchar **args_raw = NULL;
 
   for (i = 0; i < COMMON_ARGC; i++)
-    g_ptr_array_add(args, (gchar *)COMMON_ARGV[i]);
+    g_ptr_array_add (args, (gchar *) COMMON_ARGV[i]);
 
   for (i = 0; i < child_argc; i++)
-    g_ptr_array_add(args, (gchar *)child_argv[i]);
+    g_ptr_array_add (args, (gchar *) child_argv[i]);
 
-  g_ptr_array_add(args, NULL);
+  g_ptr_array_add (args, NULL);
 
-  args_raw = (gchar **)g_ptr_array_free(args, FALSE);
+  args_raw = (gchar **) g_ptr_array_free (args, FALSE);
 
-  return g_spawn_sync(NULL, args_raw, NULL, 0,
-                      &child_setup_fchdir, (gpointer)(uintptr_t)deployment_dfd,
-                      NULL, NULL, exit_status, error);
+  return g_spawn_sync (NULL, args_raw, NULL, 0, &child_setup_fchdir,
+                       (gpointer) (uintptr_t) deployment_dfd,
+                       NULL, NULL, exit_status, error);
 }
 
 static gboolean
@@ -2933,11 +2933,11 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
     "semodule", "-N", "--rebuild-if-modules-changed"
   };
   gint exit_status;
-  if (!run_in_deployment(deployment_dfd, SEMODULE_CMD,
-                         sizeof(SEMODULE_CMD) / sizeof(*SEMODULE_CMD),
-                         &exit_status, error))
+  if (!run_in_deployment (deployment_dfd, SEMODULE_CMD,
+                          sizeof (SEMODULE_CMD) / sizeof (*SEMODULE_CMD),
+                          &exit_status, error))
     return FALSE;
-  if (!g_spawn_check_exit_status(exit_status, NULL))
+  if (!g_spawn_check_exit_status (exit_status, NULL))
     g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
 
   const char *osdeploypath = glnx_strjoina ("ostree/deploy/", ostree_deployment_get_osname (deployment));
