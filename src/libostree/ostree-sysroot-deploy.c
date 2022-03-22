@@ -2830,6 +2830,7 @@ get_var_dfd (OstreeSysroot      *self,
   return glnx_opendirat (base_dfd, base_path, TRUE, ret_fd, error);
 }
 
+#ifdef HAVE_SELINUX
 static void
 child_setup_fchdir (gpointer data)
 {
@@ -2892,6 +2893,7 @@ run_in_deployment (int deployment_dfd,
                        (gpointer) (uintptr_t) deployment_dfd,
                        NULL, NULL, exit_status, error);
 }
+#endif /* HAVE_SELINUX */
 
 static gboolean
 sysroot_finalize_deployment (OstreeSysroot     *self,
@@ -2929,6 +2931,7 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
         return FALSE;
     }
 
+#ifdef HAVE_SELINUX
   static const gchar * const SEMODULE_CMD[] = {
     "semodule", "-N", "--rebuild-if-modules-changed"
   };
@@ -2939,6 +2942,7 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
     return FALSE;
   if (!g_spawn_check_exit_status (exit_status, NULL))
     g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
+#endif /* HAVE_SELINUX */
 
   const char *osdeploypath = glnx_strjoina ("ostree/deploy/", ostree_deployment_get_osname (deployment));
   glnx_autofd int os_deploy_dfd = -1;
