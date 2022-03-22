@@ -2932,6 +2932,10 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
     }
 
 #ifdef HAVE_SELINUX
+  /*
+   * Run semodule to check if the module content changed after merging /etc
+   * and rebuild the policy if needed.
+   */
   static const gchar * const SEMODULE_CMD[] = {
     "semodule", "-N", "--rebuild-if-modules-changed"
   };
