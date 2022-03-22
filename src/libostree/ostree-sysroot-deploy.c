@@ -2848,6 +2848,7 @@ run_in_deployment (int deployment_dfd,
                    const gchar * const *child_argv,
                    gsize child_argc,
                    gint *exit_status,
+                   gchar **stdout,
                    GError **error)
 {
   static const gchar * const COMMON_ARGV[] = {
@@ -2891,7 +2892,29 @@ run_in_deployment (int deployment_dfd,
 
   return g_spawn_sync (NULL, args_raw, NULL, 0, &child_setup_fchdir,
                        (gpointer) (uintptr_t) deployment_dfd,
-                       NULL, NULL, exit_status, error);
+                       stdout, NULL, exit_status, error);
+}
+
+/*
+ * Run semodule to check if the module content changed after merging /etc
+ * and rebuild the policy if needed.
+ */
+static gboolean
+sysroot_finalize_selinux_policy (int deployment_dfd, GError **error)
+{
+  static const gchar * const SEMODULE_CMD[] = {
+    "semodule", "-N", "--rebuild-if-modules-changed"
+  };
+  gint exit_status;
+
+  if (!run_in_deployment (deployment_dfd, SEMODULE_CMD,
+                          sizeof (SEMODULE_CMD) / sizeof (*SEMODULE_CMD),
+                          &exit_status, NULL, error))
+    return FALSE;
+  if (!g_spawn_check_exit_status (exit_status, NULL))
+    g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
+
+  return TRUE;
 }
 #endif /* HAVE_SELINUX */
 
@@ -2932,20 +2955,8 @@ sysroot_finalize_deployment (OstreeSysroot     *self,
     }
 
 #ifdef HAVE_SELINUX
-  /*
-   * Run semodule to check if the module content changed after merging /etc
-   * and rebuild the policy if needed.
-   */
-  static const gchar * const SEMODULE_CMD[] = {
-    "semodule", "-N", "--rebuild-if-modules-changed"
-  };
-  gint exit_status;
-  if (!run_in_deployment (deployment_dfd, SEMODULE_CMD,
-                          sizeof (SEMODULE_CMD) / sizeof (*SEMODULE_CMD),
-                          &exit_status, error))
+  if (!sysroot_finalize_selinux_policy(deployment_dfd, error))
     return FALSE;
-  if (!g_spawn_check_exit_status (exit_status, NULL))
-    g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
 #endif /* HAVE_SELINUX */
 
   const char *osdeploypath = glnx_strjoina ("ostree/deploy/", ostree_deployment_get_osname (deployment));
