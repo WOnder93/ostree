@@ -2903,6 +2903,8 @@ static gboolean
 sysroot_finalize_selinux_policy (int deployment_dfd, GError **error)
 {
   struct stat stbuf;
+  gint exit_status;
+  g_autofree gchar *stdout;
 
   if (!glnx_fstatat_allow_noent (deployment_dfd, "etc/selinux/config", &stbuf,
                                  AT_SYMLINK_NOFOLLOW, error))
@@ -2912,19 +2914,31 @@ sysroot_finalize_selinux_policy (int deployment_dfd, GError **error)
   if (errno == 0)
     return TRUE;
 
-  static const gchar * const SEMODULE_CMD[] = {
+  /*
+   * Skip the SELinux policy refresh if the --rebuild-if-modules-changed
+   * flag is not supported by semodule.
+   */
+  static const gchar * const SEMODULE_HELP_ARGV[] = {
+    "semodule", "--help"
+  };
+  static const gsize SEMODULE_HELP_ARGC = sizeof (SEMODULE_HELP_ARGV) / sizeof (*SEMODULE_HELP_ARGV);
+  if (!run_in_deployment (deployment_dfd, SEMODULE_HELP_ARGV,
+                          SEMODULE_HELP_ARGC, &exit_status, &stdout, error))
+    return FALSE;
+  if (!g_spawn_check_exit_status (exit_status, error))
+    return FALSE;
+  if (!strstr(stdout, "--rebuild-if-modules-changed"))
+    return TRUE;
+
+  static const gchar * const SEMODULE_REBUILD_ARGV[] = {
     "semodule", "-N", "--rebuild-if-modules-changed"
   };
-  gint exit_status;
+  static const gsize SEMODULE_REBUILD_ARGC = sizeof (SEMODULE_REBUILD_ARGV) / sizeof (*SEMODULE_REBUILD_ARGV);
 
-  if (!run_in_deployment (deployment_dfd, SEMODULE_CMD,
-                          sizeof (SEMODULE_CMD) / sizeof (*SEMODULE_CMD),
-                          &exit_status, NULL, error))
+  if (!run_in_deployment (deployment_dfd, SEMODULE_REBUILD_ARGV,
+                          SEMODULE_REBUILD_ARGC, &exit_status, NULL, error))
     return FALSE;
-  if (!g_spawn_check_exit_status (exit_status, NULL))
-    g_message ("Failed to refresh SELinux policy - the policy contents may be inconsistent");
-
-  return TRUE;
+  return g_spawn_check_exit_status (exit_status, error);
 }
 #endif /* HAVE_SELINUX */
 
