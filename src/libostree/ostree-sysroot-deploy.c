@@ -2902,6 +2902,16 @@ run_in_deployment (int deployment_dfd,
 static gboolean
 sysroot_finalize_selinux_policy (int deployment_dfd, GError **error)
 {
+  struct stat stbuf;
+
+  if (!glnx_fstatat_allow_noent (deployment_dfd, "etc/selinux/config", &stbuf,
+                                 AT_SYMLINK_NOFOLLOW, error))
+    return FALSE;
+
+  /* Skip the SELinux policy refresh if /etc/selinux/config doesn't exist. */
+  if (errno == 0)
+    return TRUE;
+
   static const gchar * const SEMODULE_CMD[] = {
     "semodule", "-N", "--rebuild-if-modules-changed"
   };
